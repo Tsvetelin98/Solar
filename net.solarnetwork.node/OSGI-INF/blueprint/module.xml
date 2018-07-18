@@ -1,0 +1,271 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:osgix="http://www.eclipse.org/gemini/blueprint/schema/blueprint-compendium"
+	xmlns:beans="http://www.springframework.org/schema/beans"
+	xmlns:ctx="http://www.springframework.org/schema/context"
+	xsi:schemaLocation="
+		http://www.osgi.org/xmlns/blueprint/v1.0.0
+		http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+		http://www.eclipse.org/gemini/blueprint/schema/blueprint-compendium
+		http://www.eclipse.org/gemini/blueprint/schema/blueprint-compendium/gemini-blueprint-compendium.xsd
+		http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans-4.2.xsd
+		http://www.springframework.org/schema/context
+		http://www.springframework.org/schema/context/spring-context-4.2.xsd">
+	
+	<!-- Configuration -->
+
+	<osgix:cm-properties id="core.cfg" persistent-id="net.solarnetwork.node.core">
+		<beans:prop key="scheduler.startupDelay">60</beans:prop>
+		<beans:prop key="job.backup.cron">0 3 0 ? * SAT</beans:prop>
+	</osgix:cm-properties>
+	
+	<!-- Service References -->
+
+	<bean id="eventAdmin" class="net.solarnetwork.util.DynamicServiceTracker">
+		<property name="bundleContext" ref="bundleContext"/>
+		<property name="serviceClassName" value="org.osgi.service.event.EventAdmin"/>
+	</bean>
+
+	<reference-list id="triggers" interface="net.solarnetwork.node.job.TriggerAndJobDetail" availability="optional">
+		<reference-listener bind-method="onBind" unbind-method="onUnbind">
+			<bean class="net.solarnetwork.node.runtime.JobServiceRegistrationListener">
+				<property name="scheduler" ref="scheduler"/>
+				<property name="bundleContext" ref="bundleContext"/>
+			</bean>
+		</reference-listener>
+	</reference-list>
+
+	<reference-list id="managedJobs" interface="net.solarnetwork.node.job.ManagedTriggerAndJobDetail" availability="optional">
+		<reference-listener bind-method="onBind" unbind-method="onUnbind" ref="managedJobsListener"/>
+	</reference-list>
+	<bean id="managedJobsListener" class="net.solarnetwork.node.runtime.ManagedJobServiceRegistrationListener"
+		destroy-method="finish">
+		<property name="scheduler" ref="scheduler"/>
+		<property name="bundleContext" ref="bundleContext"/>
+	</bean>
+	
+
+	<reference-list id="serializers" availability="optional" filter="(!(delegating=true))"
+		interface="net.solarnetwork.node.reactor.ReactorSerializationService"/>
+	
+	<reference-list id="backupServices" availability="optional"
+		interface="net.solarnetwork.node.backup.BackupService"/>
+	
+	<reference-list id="backupResourceProviders" availability="optional"
+		interface="net.solarnetwork.node.backup.BackupResourceProvider"/>
+	
+	<!-- 
+		Track CloseableService instances so they can be released automatically;
+		this is useful because the destroy-method Blueprint property is not 
+		available on nested bean elements (e.g. prototype beans). To work around
+		that for services that would like to have a "destroy" hook, they can
+		publish themselves as a net.solarnetwork.util.CloseableService. 
+	 -->
+	<reference-list availability="optional" interface="net.solarnetwork.util.CloseableService">
+		<reference-listener unbind-method="onReleased">
+			<bean class="net.solarnetwork.util.CloseableServiceTracker"/>
+		</reference-listener>
+	</reference-list>
+	
+	<!-- Published Services -->
+
+	<!-- Provide a centralized ObjectMapper for JSON processing. -->
+	<service interface="net.solarnetwork.util.ObjectMapperService">
+		<service-properties>
+			<entry key="function" value="node"/>
+		</service-properties>
+		<bean class="net.solarnetwork.util.SimpleObjectMapperService">
+			<property name="objectMapper" ref="objectMapper"/>
+		</bean>
+	</service>
+	<bean id="objectMapper" class="net.solarnetwork.util.ObjectMapperFactoryBean" >
+		<property name="serializers">
+			<list>
+				<bean class="net.solarnetwork.util.JodaDateTimeSerializer"/>
+				<bean class="net.solarnetwork.util.JodaLocalDateSerializer"/>
+				<bean class="net.solarnetwork.util.JodaLocalDateTimeSerializer"/>
+				<bean class="net.solarnetwork.util.JodaLocalTimeSerializer"/>
+			</list>
+		</property>
+		<property name="featuresToDisable">
+			<list>
+				<value>#{T(com.fasterxml.jackson.databind.DeserializationFeature).FAIL_ON_UNKNOWN_PROPERTIES}</value>
+			</list>
+		</property>
+	</bean>
+
+	<service ref="scheduler" interface="org.quartz.Scheduler">
+		<service-properties>
+			<entry key="function" value="node"/>
+		</service-properties>
+	</service>
+	
+	<service ref="taskScheduler">
+		<interfaces>
+			<value>org.springframework.scheduling.TaskScheduler</value>
+			<value>org.springframework.scheduling.SchedulingTaskExecutor</value>
+			<value>org.springframework.core.task.AsyncListenableTaskExecutor</value>
+			<value>org.springframework.core.task.TaskExecutor</value>
+		</interfaces>
+		<service-properties>
+			<entry key="function" value="node"/>
+		</service-properties>
+	</service>
+	
+	<service ref="delegatingReactorSerialization" ranking="5"
+		interface="net.solarnetwork.node.reactor.ReactorSerializationService">
+		<service-properties>
+			<entry key="delegating" value="true"/>
+		</service-properties>
+	</service>
+	
+	<service ref="fsBackupService" interface="net.solarnetwork.node.backup.BackupService"/>
+	
+	<service ref="backupManager">
+		<interfaces>
+			<value>net.solarnetwork.node.backup.BackupManager</value>
+			<value>net.solarnetwork.node.settings.SettingSpecifierProvider</value>
+		</interfaces>
+	</service>
+	
+	<service ref="backupJob" 
+		interface="net.solarnetwork.node.job.TriggerAndJobDetail"/>
+		
+	<service interface="net.solarnetwork.node.backup.BackupResourceProvider">
+		<bean class="net.solarnetwork.node.backup.FileBackupResourceProvider">
+			<osgix:managed-properties 
+				persistent-id="net.solarnetwork.node.backup.FileBackupResourceProvider" 
+				autowire-on-update="true"/>
+			<property name="messageSource">
+				<bean class="org.springframework.context.support.ResourceBundleMessageSource">
+					<property name="basename" value="net.solarnetwork.node.backup.FileBackupResourceProvider"/>
+				</bean>
+			</property>
+		</bean>
+	</service>
+	
+	<service interface="net.solarnetwork.node.setup.SetupResourceService">
+		<bean class="net.solarnetwork.node.setup.SimpleSetupResourceService">
+			<property name="setupResourceProviders">
+				<reference-list availability="optional" interface="net.solarnetwork.node.setup.SetupResourceProvider"/>
+			</property>
+		</bean>
+	</service>
+	
+	<!-- Supporting Services -->
+
+	<ctx:property-placeholder properties-ref="core.cfg"/>
+
+	<!-- Quartz scheduler for scheduling all jobs -->
+	<bean id="scheduler" class="org.springframework.scheduling.quartz.SchedulerFactoryBean">
+		<property name="applicationContextSchedulerContextKey" value="applicationContext"/>
+		<property name="waitForJobsToCompleteOnShutdown" value="true"/>
+		<property name="startupDelay" value="${scheduler.startupDelay}"/>
+		<property name="schedulerName" value="Solar Node"/>
+		<property name="quartzProperties">
+			<props>
+				<prop key="org.quartz.threadPool.threadCount">3</prop>
+			</props>
+		</property>
+		<property name="jobFactory">
+			<bean class="org.springframework.scheduling.quartz.SpringBeanJobFactory"/>
+		</property>
+	</bean>
+	
+	<!-- Task scheduler for simple repeating tasks -->
+	<bean id="taskScheduler" class="org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler">
+		<property name="poolSize" value="1"/>
+	</bean>
+		
+	<bean id="delegatingReactorSerialization" 
+		class="net.solarnetwork.node.reactor.support.DelegatingReactorSerialization">
+		<property name="serializers" ref="serializers"/>
+	</bean>
+	
+	<bean id="backupManager" class="net.solarnetwork.node.backup.DefaultBackupManager" init-method="init">
+		<osgix:managed-properties 
+			persistent-id="net.solarnetwork.node.backup.DefaultBackupManager" 
+			autowire-on-update="true"/>
+		<property name="backupServices" ref="backupServices"/>
+		<property name="resourceProviders" ref="backupResourceProviders"/>
+	</bean>
+
+	<bean id="fsBackupService" class="net.solarnetwork.node.backup.FileSystemBackupService">
+		<osgix:managed-properties 
+			persistent-id="net.solarnetwork.node.backup.FileSystemBackupService" 
+			autowire-on-update="true"/>
+		<property name="messageSource">
+			<bean class="org.springframework.context.support.ResourceBundleMessageSource">
+				<property name="basename" value="net.solarnetwork.node.backup.FileSystemBackupService"/>
+			</bean>
+		</property>
+		<property name="identityService">
+			<bean class="net.solarnetwork.util.DynamicServiceTracker">
+				<property name="bundleContext" ref="bundleContext"/>
+				<property name="serviceClassName" value="net.solarnetwork.node.IdentityService"/>
+			</bean>	
+		</property>
+	</bean>
+
+	<!-- Jobs -->
+
+	<bean id="jobMessageSource" class="org.springframework.context.support.ResourceBundleMessageSource">
+		<property name="basenames" value="net.solarnetwork.node.JOBS"/>
+	</bean>
+
+	<bean id="backupJob" class="net.solarnetwork.node.job.SimpleTriggerAndJobDetail">
+		<property name="trigger">
+			<bean class="org.springframework.scheduling.quartz.CronTriggerFactoryBean">
+				<property name="name" value="backupTrigger"/>
+				<property name="description" value="Backup node configuration data."/>
+				<property name="cronExpression" value="${job.backup.cron}"/>
+				<property name="misfireInstructionName" value="MISFIRE_INSTRUCTION_DO_NOTHING"/>
+			</bean>
+		</property>
+		<property name="jobDetail">
+			<bean class="org.springframework.scheduling.quartz.JobDetailFactoryBean">
+				<property name="name" value="backupJob"/>
+				<property name="jobClass" value="net.solarnetwork.node.job.BackupJob"/>
+				<property name="jobDataAsMap">
+					<map>
+						<entry key="backupManager" value-ref="backupManager"/>
+					</map>
+				</property>
+			</bean>
+		</property>
+		<property name="messageSource" ref="jobMessageSource"/>
+	</bean>
+	
+	<!-- Messaging -->
+
+	<bean id="messageSendingOperations" class="net.solarnetwork.util.DynamicServiceTracker">
+		<property name="bundleContext" ref="bundleContext"/>
+		<property name="serviceClassName" value="org.springframework.messaging.simp.SimpMessageSendingOperations"/>
+		<property name="serviceFilter" value="(channel=broker)"/>
+	</bean>
+
+	<service interface="org.osgi.service.event.EventHandler">
+		<service-properties>
+			<entry key="#{T(org.osgi.service.event.EventConstants).EVENT_TOPIC}">
+				<beans:array value-type="java.lang.String">
+					<beans:value>net/solarnetwork/node/*</beans:value>
+				</beans:array>
+			</entry>
+		</service-properties>
+		<bean class="net.solarnetwork.node.runtime.EventMessageBridge">
+			<argument ref="messageSendingOperations"/>
+		</bean>
+	</service>
+	
+	<!-- PlatformService -->
+
+	<service interface="net.solarnetwork.node.PlatformService">
+		<bean class="net.solarnetwork.node.runtime.DefaultPlatformService">
+			<property name="eventAdmin" ref="eventAdmin"/>
+			<property name="messageSendingOperations" ref="messageSendingOperations"/>
+		</bean>
+	</service>
+
+</blueprint>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:osgi="http://www.eclipse.org/gemini/blueprint/schema/blueprint"
+	xsi:schemaLocation="
+		http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans-4.2.xsd
+		http://www.eclipse.org/gemini/blueprint/schema/blueprint 
+		http://www.eclipse.org/gemini/blueprint/schema/blueprint/gemini-blueprint.xsd">
+
+	<!-- Service References -->
+	
+	<osgi:reference id="dataCollectorBiz" sticky="false"
+		interface="net.solarnetwork.central.in.biz.DataCollectorBiz"/>
+	
+	<osgi:reference id="registrationBiz" sticky="false"
+		interface="net.solarnetwork.central.user.biz.RegistrationBiz"/>
+	
+	<osgi:reference id="networkIdentityBiz" sticky="false"
+		interface="net.solarnetwork.central.in.biz.NetworkIdentityBiz"/>
+	
+	<osgi:reference id="solarNodeDao"
+		interface="net.solarnetwork.central.dao.SolarNodeDao"/>
+
+	<osgi:reference id="instructorBizRef" availability="optional" sticky="false" 
+		interface="net.solarnetwork.central.instructor.biz.InstructorBiz">
+		<osgi:listener ref="instructorBiz" bind-method="onBind" unbind-method="onUnbind"/>
+	</osgi:reference>
+	
+	<osgi:list id="pingTests" availability="optional" interface="net.solarnetwork.central.domain.PingTest"/>
+	
+</beans>

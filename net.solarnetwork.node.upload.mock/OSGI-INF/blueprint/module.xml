@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:osgix="http://www.eclipse.org/gemini/blueprint/schema/blueprint-compendium"
+	xmlns:beans="http://www.springframework.org/schema/beans"
+	xsi:schemaLocation="
+		http://www.osgi.org/xmlns/blueprint/v1.0.0
+		http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+		http://www.eclipse.org/gemini/blueprint/schema/blueprint-compendium
+		http://www.eclipse.org/gemini/blueprint/schema/blueprint-compendium/gemini-blueprint-compendium.xsd
+		http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans-4.2.xsd">
+
+	<reference-list id="datumDaoCollection" availability="optional" 
+		interface="net.solarnetwork.node.dao.DatumDao"/>
+	
+	<service ref="bulkDatumUploader" interface="net.solarnetwork.node.job.TriggerAndJobDetail"/>
+
+	<service ref="mockUploadService" ranking="-1">
+		<interfaces>
+			<value>net.solarnetwork.node.UploadService</value>
+			<value>net.solarnetwork.node.BulkUploadService</value>
+		</interfaces>
+	</service>
+
+	<bean id="mockUploadService"
+		class="net.solarnetwork.node.upload.MockUploadService"/>
+
+	<!-- Upload job -->
+	
+	<bean id="bulkDatumUploader" class="net.solarnetwork.node.job.SimpleTriggerAndJobDetail">
+		<property name="trigger" ref="bulkDatumUploadTrigger"/>
+		<property name="jobDetail" ref="bulkDatumUploadJob"/>
+		<property name="messageSource">
+			<bean class="org.springframework.context.support.ResourceBundleMessageSource">
+				<property name="basenames" value="net.solarnetwork.node.upload.mock.JOBS"/>
+			</bean>
+		</property>
+	</bean>
+	
+	<bean id="bulkDatumUploadTrigger" class="net.solarnetwork.node.job.RandomizedCronTriggerFactoryBean">
+		<property name="jobDetail" ref="bulkDatumUploadJob"/>
+		<property name="name" value="Mock Bulk Datum Uploader"/>
+		<property name="description" value="Mock MockUploadService for testing uploading of data."/>
+		<property name="cronExpression" value="20 * * * * ?"/>
+		<property name="misfireInstructionName" value="MISFIRE_INSTRUCTION_DO_NOTHING"/>
+		<property name="randomSecond" value="true"/>
+	</bean>
+	
+	<bean id="bulkDatumUploadJob" class="org.springframework.scheduling.quartz.JobDetailFactoryBean">
+		<property name="jobClass" value="net.solarnetwork.node.job.DatumDaoBulkUploadJob"/>
+		<property name="jobDataAsMap">
+			<map>
+				<entry key="daos" value-ref="datumDaoCollection"/>
+				<entry key="uploadService" value-ref="mockUploadService"/>
+			</map>
+		</property>
+	</bean>
+	
+</blueprint>

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:ctx="http://www.springframework.org/schema/context"
+	xmlns:jee="http://www.springframework.org/schema/jee"
+	xmlns:mvc="http://www.springframework.org/schema/mvc"
+	xmlns:p="http://www.springframework.org/schema/p"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xsi:schemaLocation="
+		http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans-4.2.xsd
+		http://www.springframework.org/schema/context
+		http://www.springframework.org/schema/context/spring-context-4.2.xsd
+		http://www.springframework.org/schema/jee
+		http://www.springframework.org/schema/jee/spring-jee-4.2.xsd
+		http://www.springframework.org/schema/mvc
+		http://www.springframework.org/schema/mvc/spring-mvc-4.2.xsd
+		http://www.springframework.org/schema/tx
+		http://www.springframework.org/schema/tx/spring-tx-4.2.xsd">
+
+	<!-- Combine all /WEB-INF/**/messages.properties into a single message source. -->
+	<bean id="messageSource" class="net.solarnetwork.web.support.PatternMatchingResourceBundleMessagesSource"
+		p:cacheSeconds="-1" p:basename="WEB-INF/**/messages"/>
+	
+	<ctx:annotation-config/>
+	<ctx:component-scan base-package="net.solarnetwork.node.setup.web"/>
+
+	<mvc:annotation-driven>
+		<mvc:async-support default-timeout="30000" task-executor="taskExecutor"/>
+		<mvc:message-converters register-defaults="true">
+			<bean class="org.springframework.http.converter.json.MappingJackson2HttpMessageConverter">
+				<property name="prefixJson" value="false" />
+				<property name="supportedMediaTypes" value="application/json" />
+				<property name="objectMapper" ref="objectMapper"/>
+		    </bean>
+		</mvc:message-converters>
+		<mvc:argument-resolvers>
+    		<bean class="org.springframework.security.web.method.annotation.CsrfTokenArgumentResolver"/>
+		</mvc:argument-resolvers>
+	</mvc:annotation-driven>
+	
+	<bean id="objectMapper" class="com.fasterxml.jackson.databind.ObjectMapper" 
+		factory-bean="objectMapperService" factory-method="getObjectMapper"/>
+	
+	<bean class="org.springframework.web.servlet.mvc.SimpleControllerHandlerAdapter" />
+
+	<!-- Dispatch view-only requests, e.g. login -->
+	<bean class="org.springframework.web.servlet.handler.SimpleUrlHandlerMapping">
+		<property name="order" value="2" />
+        <property name="mappings">
+            <props>
+                <prop key="/**/*.do">urlViewController</prop>
+            </props>
+        </property>
+	</bean>
+
+    <bean id="urlViewController" class="org.springframework.web.servlet.mvc.UrlFilenameViewController"/>
+	
+	<!-- Resolves logical view names returned by Controllers to Tiles; 
+		a view name to resolve is treated as the name of a tiles definition -->
+	<bean id="tilesViewResolver" class="org.springframework.web.servlet.view.UrlBasedViewResolver">
+		<property name="viewClass" value="org.springframework.web.servlet.view.tiles3.TilesView"/>
+	</bean>
+
+	<!-- If Tiles view not found, try a bean name (xml, json below) -->
+	<bean id="beanNameViewResolver" class="org.springframework.web.servlet.view.BeanNameViewResolver">
+		<property name="order" value="2"/>
+	</bean>
+	
+	<!-- Configures the Tiles layout system -->
+	<bean id="tilesConfigurer" class="org.springframework.web.servlet.view.tiles3.TilesConfigurer">
+		<property name="definitions">
+			<list>
+				<value>/WEB-INF/jsp/layout/layout.xml</value>
+				<value>/WEB-INF/**/views.xml</value>
+			</list>
+		</property>
+	</bean>
+	
+	<bean id="multipartResolver" class="org.springframework.web.multipart.commons.CommonsMultipartResolver">
+		<property name="maxUploadSize" value="10000000"/>
+	</bean>
+	
+</beans>

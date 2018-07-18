@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:ctx="http://www.springframework.org/schema/context"
+	xmlns:osgix="http://www.eclipse.org/gemini/blueprint/schema/blueprint-compendium"
+	xmlns:beans="http://www.springframework.org/schema/beans"
+	xsi:schemaLocation="
+		http://www.osgi.org/xmlns/blueprint/v1.0.0
+		http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+		http://www.eclipse.org/gemini/blueprint/schema/blueprint-compendium
+		http://www.eclipse.org/gemini/blueprint/schema/blueprint-compendium/gemini-blueprint-compendium.xsd
+		http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans-4.2.xsd
+		http://www.springframework.org/schema/context
+		http://www.springframework.org/schema/context/spring-context-4.2.xsd">
+
+	<!-- Configuration -->
+	
+	<osgix:cm-properties id="ws.cfg" persistent-id="net.solarnetwork.node.location.ws.ws">
+		<beans:prop key="WebServiceLocationService.cacheTtl">14400000</beans:prop>
+	</osgix:cm-properties>
+	
+	<!-- Referenced Services -->
+	
+	<reference id="identityService" availability="optional" interface="net.solarnetwork.node.IdentityService"/>
+
+	<!-- Published Services -->
+
+	<service ref="wsLocationServiceService" interface="net.solarnetwork.node.LocationService" ranking="1"/>
+
+	<!-- Supporting Services -->
+	
+	<ctx:property-placeholder properties-ref="ws.cfg"/>
+	
+	<bean id="objectMapper" class="net.solarnetwork.util.ObjectMapperFactoryBean">
+		<property name="deserializers">
+			<list>
+				<bean class="net.solarnetwork.util.JodaDateTimeDeserializer"/>
+			</list>
+		</property>
+	</bean>
+	
+	<bean id="wsLocationServiceService" class="net.solarnetwork.node.location.ws.WebServiceLocationService">
+		<property name="objectMapper" ref="objectMapper"/>
+		<property name="identityService" ref="identityService"/>
+		<property name="sslService">
+			<bean class="net.solarnetwork.util.DynamicServiceTracker">
+				<property name="bundleContext" ref="bundleContext"/>
+				<property name="serviceClassName" value="net.solarnetwork.node.SSLService"/>
+			</bean>	
+		</property>
+		<property name="cacheTtl" value="${WebServiceLocationService.cacheTtl}"/>
+	</bean>
+	
+</blueprint>
